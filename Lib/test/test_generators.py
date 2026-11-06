@@ -579,6 +579,69 @@ class ExceptionTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'raised StopIteration'):
             next(gen())
 
+    def test_throw_stopiteration_before_start(self):
+        class StopSubclass(StopIteration):
+            pass
+
+        events = []
+
+        def gen():
+            try:
+                events.append("entered")
+                yield
+            finally:
+                events.append("finally")
+
+        for factory in (gen, lambda: (x for x in ()),
+                        lambda: (x for x in (1, 2))):
+            for exc in (StopIteration, StopIteration("unstarted"),
+                        StopSubclass("subclass")):
+                with self.subTest(factory=factory, exc=exc):
+                    g = factory()
+                    with self.assertRaisesRegex(
+                            RuntimeError, "^generator raised StopIteration$") as cm:
+                        g.throw(exc)
+                    cause = cm.exception.__cause__
+                    if isinstance(exc, type):
+                        self.assertIs(type(cause), exc)
+                        self.assertEqual(cause.args, ())
+                    else:
+                        self.assertIs(cause, exc)
+                    self.assertIs(cm.exception.__context__, cause)
+                    self.assertTrue(cm.exception.__suppress_context__)
+                    self.assertIsNone(g.gi_frame)
+                    self.assertEqual(events, [])
+
+    def test_throw_before_start_releases_genexpr_iterator(self):
+        class Iterator:
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                raise StopIteration
+
+        iterator = Iterator()
+        ref = weakref.ref(iterator)
+        g = (x for x in iterator)
+        del iterator
+        self.assertIsNotNone(ref())
+        with self.assertRaisesRegex(RuntimeError, "generator raised StopIteration"):
+            g.throw(StopIteration)
+        support.gc_collect()
+        self.assertIsNone(g.gi_frame)
+        self.assertIsNone(ref())
+
+    def test_genexpr_creation_stopiteration(self):
+        exc = StopIteration("creating iterator")
+
+        class Iterable:
+            def __iter__(self):
+                raise exc
+
+        with self.assertRaises(StopIteration) as cm:
+            (x for x in Iterable())
+        self.assertIs(cm.exception, exc)
+
     def test_tutorial_stopiteration(self):
         # Raise StopIteration" stops the generator too:
 

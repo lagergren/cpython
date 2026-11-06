@@ -135,6 +135,58 @@ class AsyncGenSyntaxTest(unittest.TestCase):
 
 class AsyncGenTest(unittest.TestCase):
 
+    def test_athrow_stopiteration_before_start(self):
+        class StopSubclass(StopIteration):
+            pass
+
+        class AsyncStopSubclass(StopAsyncIteration):
+            pass
+
+        events = []
+
+        async def agen():
+            try:
+                events.append("entered")
+                yield
+            finally:
+                events.append("finally")
+
+        for factory in (agen, lambda: (x async for x in agen())):
+            for exc in (StopIteration, StopIteration("unstarted"),
+                        StopSubclass("subclass"), StopAsyncIteration,
+                        StopAsyncIteration("unstarted"),
+                        AsyncStopSubclass("subclass")):
+                with self.subTest(factory=factory, exc=exc):
+                    g = factory()
+                    exception_type = exc if isinstance(exc, type) else type(exc)
+                    name = ("StopIteration" if issubclass(exception_type, StopIteration)
+                            else "StopAsyncIteration")
+                    with self.assertRaisesRegex(
+                            RuntimeError, f"^async generator raised {name}$") as cm:
+                        g.athrow(exc).send(None)
+                    cause = cm.exception.__cause__
+                    if isinstance(exc, type):
+                        self.assertIs(type(cause), exc)
+                        self.assertEqual(cause.args, ())
+                    else:
+                        self.assertIs(cause, exc)
+                    self.assertIs(cm.exception.__context__, cause)
+                    self.assertTrue(cm.exception.__suppress_context__)
+                    self.assertIsNone(g.ag_frame)
+                    self.assertEqual(events, [])
+
+    def test_async_genexpr_creation_stopiteration(self):
+        for exc in (StopIteration("creating async iterator"),
+                    StopAsyncIteration("creating async iterator")):
+            with self.subTest(exc=exc):
+                class Iterable:
+                    def __aiter__(self):
+                        raise exc
+
+                with self.assertRaises(type(exc)) as cm:
+                    (x async for x in Iterable())
+                self.assertIs(cm.exception, exc)
+
     def compare_generators(self, sync_gen, async_gen):
         def sync_iterate(g):
             res = []

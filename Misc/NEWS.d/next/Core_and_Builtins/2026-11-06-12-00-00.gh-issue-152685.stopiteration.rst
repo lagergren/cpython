@@ -1,0 +1,5 @@
+Apply :pep:`479` when :meth:`~generator.throw` or
+:meth:`~agen.athrow` injects ``StopIteration`` (or ``StopAsyncIteration``
+for an asynchronous generator) before the first resume. Reuse the existing
+bytecode exception handler, including for previously compiled code, instead
+of leaking the exception or aborting a debug build.

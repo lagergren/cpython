@@ -13705,8 +13705,14 @@ JUMP_TO_LABEL(error);
         {
             STOP_TRACING();
             int offset = INSTR_OFFSET()-1;
+            PyCodeObject *code = _PyFrame_GetCode(frame);
+            if (frame->owner == FRAME_OWNED_BY_GENERATOR &&
+                INSTR_OFFSET() < code->_co_firsttraceable)
+            {
+                offset = code->_co_firsttraceable;
+            }
             int level, handler, lasti;
-            int handled = get_exception_handler(_PyFrame_GetCode(frame), offset, &level, &handler, &lasti);
+            int handled = get_exception_handler(code, offset, &level, &handler, &lasti);
             if (handled == 0) {
                 assert(_PyErr_Occurred(tstate));
                 _PyStackRef *stackbase = _PyFrame_Stackbase(frame);

@@ -6455,8 +6455,17 @@ dummy_func(
             STOP_TRACING();
             /* We can't use frame->instr_ptr here, as RERAISE may have set it */
             int offset = INSTR_OFFSET()-1;
+            PyCodeObject *code = _PyFrame_GetCode(frame);
+            if (frame->owner == FRAME_OWNED_BY_GENERATOR &&
+                INSTR_OFFSET() < code->_co_firsttraceable)
+            {
+                /* An initial throw precedes the first body RESUME. Use its outer
+                   StopIteration handler without changing the saved instruction
+                   pointer or the locations reported to tracing and monitoring. */
+                offset = code->_co_firsttraceable;
+            }
             int level, handler, lasti;
-            int handled = get_exception_handler(_PyFrame_GetCode(frame), offset, &level, &handler, &lasti);
+            int handled = get_exception_handler(code, offset, &level, &handler, &lasti);
             if (handled == 0) {
                 // No handlers, so exit.
                 assert(_PyErr_Occurred(tstate));

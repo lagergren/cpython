@@ -638,6 +638,36 @@ class TokenizerRegrTest(unittest.TestCase):
 
 class CoroutineTest(unittest.TestCase):
 
+    def test_throw_stopiteration_before_start(self):
+        class StopSubclass(StopIteration):
+            pass
+
+        events = []
+
+        async def coro():
+            try:
+                events.append("entered")
+            finally:
+                events.append("finally")
+
+        for exc in (StopIteration, StopIteration("unstarted"),
+                    StopSubclass("subclass")):
+            with self.subTest(exc=exc):
+                c = coro()
+                with self.assertRaisesRegex(
+                        RuntimeError, "^coroutine raised StopIteration$") as cm:
+                    c.throw(exc)
+                cause = cm.exception.__cause__
+                if isinstance(exc, type):
+                    self.assertIs(type(cause), exc)
+                    self.assertEqual(cause.args, ())
+                else:
+                    self.assertIs(cause, exc)
+                self.assertIs(cm.exception.__context__, cause)
+                self.assertTrue(cm.exception.__suppress_context__)
+                self.assertIsNone(c.cr_frame)
+                self.assertEqual(events, [])
+
     def test_gen_1(self):
         def gen(): yield
         self.assertNotHasAttr(gen, '__await__')
